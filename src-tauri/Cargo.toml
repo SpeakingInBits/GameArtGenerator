@@ -1,0 +1,32 @@
+[package]
+name = "game-art-generator"
+version = "0.0.0"
+description = "Generate game art with the xAI Grok Imagine API"
+authors = ["SpeakingInBits"]
+edition = "2024"
+publish = false
+
+[lib]
+name = "game_art_generator_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Default TLS on Windows is the system one (SChannel).
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+keyring = { version = "3", features = ["windows-native"] }
+rand = "0.9"
+arboard = "3"
+# Keep in step with the vpk version in .github/workflows/release.yml.
+velopack = "=1.2.161"

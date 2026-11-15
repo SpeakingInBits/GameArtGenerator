@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game Art Generator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="icon.png" alt="" class="brand-icon">
+      <span>Game Art Generator</span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="generate" role="tab">Generate</button>
+      <button class="tab" data-tab="history" role="tab">History</button>
+    </nav>
+    <div class="costs" aria-label="Spending">
+      <div class="cost"><span class="cost-label">Last</span><span id="cost-last" class="cost-value">—</span></div>
+      <div class="cost"><span class="cost-label">This session</span><span id="cost-session" class="cost-value">$0.000</span><span id="cost-session-count" class="cost-sub"></span></div>
+      <div class="cost"><span class="cost-label">All time</span><span id="cost-total" class="cost-value">$0.000</span><span id="cost-total-count" class="cost-sub"></span></div>
+    </div>
+    <button id="settings-button" class="icon-button" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.5a.5.5 0 0 0-.6-.2l-2.5 1a7.4 7.4 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 0-.5.4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.5a.5.5 0 0 0 .1.6L4.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.5a.5.5 0 0 0 .6.2l2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1a.5.5 0 0 0 .6-.2l2-3.5a.5.5 0 0 0-.1-.6L19.4 13ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+      <span id="settings-dot" class="dot" hidden></span>
+    </button>
+  </header>
+
+  <div id="update-banner" class="banner" hidden>
+    <span id="update-text"></span>
+    <button id="update-restart" class="button primary small">Restart now</button>
+  </div>
+  <div id="key-banner" class="banner warn" hidden>
+    <span>No xAI API key is set, so nothing can be generated yet.</span>
+    <button id="key-banner-button" class="button small">Add API key</button>
+  </div>
+
+  <main>
+    <!-- Generate -->
+    <section id="tab-generate" class="tab-panel active">
+      <aside class="controls">
+        <div class="field">
+          <div class="field-head">
+            <label for="prompt">Prompt</label>
+            <span id="prompt-count" class="muted small"></span>
+          </div>
+          <textarea id="prompt" placeholder="Describe the art you want, e.g. &quot;Pixel-art treasure chest, 32×32 game sprite, flat background&quot;"></textarea>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <label>Reference images <span id="ref-count" class="muted"></span></label>
+            <span id="ref-mode" class="muted small"></span>
+          </div>
+          <div id="ref-zone" class="ref-zone" tabindex="0">
+            <div id="ref-grid" class="ref-grid"></div>
+            <div id="ref-empty" class="ref-empty"><span>Drop images here, paste with <kbd>Ctrl</kbd>+<kbd>V</kbd>,<br>or use Add</span></div>
+          </div>
+          <div class="button-row">
+            <button id="ref-add" class="button">Add…</button>
+            <button id="ref-paste" class="button">Paste</button>
+            <button id="ref-clear" class="button">Clear</button>
+          </div>
+        </div>
+
+        <div class="field settings-grid">
+          <label for="model">Model</label>
+          <select id="model"></select>
+          <label for="count">Images</label>
+          <input id="count" type="number" min="1" max="10" value="1">
+          <label for="aspect">Aspect ratio</label>
+          <select id="aspect"></select>
+          <label for="resolution">Resolution</label>
+          <select id="resolution"></select>
+          <label for="quality">Quality</label>
+          <select id="quality">
+            <option value="auto">auto</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+          </select>
+        </div>
+        <p id="quality-hint" class="muted small hint"></p>
+
+        <div class="generate-box">
+          <div class="estimate">
+            <span class="muted">Estimated cost</span>
+            <strong id="estimate-total">—</strong>
+            <span id="estimate-detail" class="muted small"></span>
+          </div>
+          <button id="generate" class="button primary big">Generate <span class="kbd-hint">Ctrl+Enter</span></button>
+        </div>
+      </aside>
+
+      <section class="results">
+        <div class="results-head">
+          <h2>Results</h2>
+          <span class="muted small">Click to preview · right-click for options</span>
+          <button id="results-clear" class="button small" title="Clears this view only. Images stay on disk and in History.">Clear view</button>
+        </div>
+        <div id="results" class="gallery">
+          <div id="results-empty" class="empty-state">
+            <img src="icon.png" alt="" width="72" height="72">
+            <p>Your generated images will show up here.</p>
+            <p class="muted small">Every generation is saved and logged in History, with its cost.</p>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <!-- History -->
+    <section id="tab-history" class="tab-panel">
+      <div class="history-list">
+        <div class="history-toolbar">
+          <input id="history-search" type="search" placeholder="Search prompts">
+          <div id="history-summary" class="muted small"></div>
+        </div>
+        <div class="table-wrap">
+          <table id="history-table">
+            <thead>
+              <tr><th>When</th><th>Prompt</th><th>Model</th><th class="num">Refs</th><th class="num">Images</th><th class="num">Cost</th><th>Status</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div id="history-empty" class="empty-state small-empty" hidden><p>No generations yet.</p></div>
+        </div>
+      </div>
+      <aside id="history-detail" class="history-detail">
+        <p class="muted">Select a generation to see its images and details.</p>
+      </aside>
+    </section>
+  </main>
+
+  <!-- Settings -->
+  <dialog id="settings-dialog">
+    <form method="dialog" class="dialog-body">
+      <h2>Settings</h2>
+
+      <section>
+        <h3>xAI API key</h3>
+        <p id="key-status" class="muted small"></p>
+        <div class="inline">
+          <input id="key-input" type="password" placeholder="xai-…" autocomplete="off" spellcheck="false">
+          <button id="key-save" type="button" class="button primary">Save</button>
+          <button id="key-remove" type="button" class="button">Remove</button>
+        </div>
+        <p class="muted small">Saved in Windows Credential Manager. Get a key at <a href="#" data-open="https://console.x.ai">console.x.ai</a>.</p>
+      </section>
+
+      <section>
+        <h3>Images folder</h3>
+        <p class="muted small">Where new images are saved. Point it at your game project's art folder if you like.</p>
+        <div class="inline">
+          <input id="images-dir" type="text" readonly>
+          <button id="images-dir-change" type="button" class="button">Change…</button>
+          <button id="images-dir-reset" type="button" class="button">Reset</button>
+        </div>
+      </section>
+
+      <section>
+        <h3>Data folder</h3>
+        <p id="data-mode" class="muted small"></p>
+        <div class="inline">
+          <input id="data-dir" type="text" readonly>
+          <button id="data-dir-open" type="button" class="button">Open</button>
+        </div>
+      </section>
+
+      <section>
+        <h3>Updates</h3>
+        <div class="inline">
+          <span id="version-text"></span>
+          <span id="update-status" class="muted small"></span>
+          <button id="update-check" type="button" class="button">Check now</button>
+        </div>
+      </section>
+
+      <div class="dialog-actions">
+        <button class="button" value="close">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Preview -->
+  <div id="lightbox" class="lightbox" hidden>
+    <button class="lightbox-close icon-button" aria-label="Close">✕</button>
+    <button class="lightbox-nav prev icon-button" aria-label="Previous">‹</button>
+    <img id="lightbox-img" alt="">
+    <button class="lightbox-nav next icon-button" aria-label="Next">›</button>
+    <div class="lightbox-bar">
+      <span id="lightbox-caption" class="muted small"></span>
+      <button class="button small" data-action="open">Open</button>
+      <button class="button small" data-action="folder">Show in folder</button>
+      <button class="button small" data-action="copy">Copy</button>
+      <button class="button small" data-action="reference">Use as reference</button>
+    </div>
+  </div>
+
+  <div id="context-menu" class="context-menu" hidden>
+    <button data-action="open">Open</button>
+    <button data-action="folder">Show in folder</button>
+    <button data-action="copy">Copy image</button>
+    <hr>
+    <button data-action="reference">Use as reference image</button>
+  </div>
+
+  <div id="drop-overlay" class="drop-overlay" hidden><div>Drop to add as reference images</div></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="main.js"></script>
+</body>
+</html>
