@@ -73,10 +73,11 @@ Needs Python 3.10+, [uv](https://docs.astral.sh/uv/) and Git. Downloads are a fe
    uv run huggingface-cli login
    ```
 
-4. Start the server from the `stable-audio-3` folder, pointing at this repo's `audio-server/server.py`:
+4. Start the server from the `stable-audio-3` folder. Point it at `audio-server/server.py` in your copy of this
+   repo, replacing `<repo>` with that folder:
 
    ```bash
-   uv run python "E:/Code/Game Dev/Game Art Generator/audio-server/server.py" --models small-sfx,small-music
+   uv run python "<repo>/audio-server/server.py" --models small-sfx,small-music
    ```
 
 5. In the app, go to **Settings → Audio servers** and add *This PC*, type *Game Art audio server*, address
