@@ -1,12 +1,12 @@
-//! The generation log: one row per generation, successful or not, in `history.db` (SQLite).
-//! Images are files on disk; the database stores their paths.
+//! The generation log in `history.db` (SQLite): one row per image generation, 3D model job and audio generation,
+//! successful or not. Images, models and audio are files on disk; the database stores their paths.
 
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 4;
 
 #[derive(Debug, Clone)]
 pub struct GenerationRow {
@@ -30,11 +30,73 @@ pub struct GenerationRow {
     pub usage: Option<String>,
 }
 
+/// One image sent to Tripo: the view it shows (`image` for a single picture, or `front`, `left`, `back`, `right`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelInput {
+    pub view: String,
+    /// Stored path (see `AppPaths::to_stored`).
+    pub path: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModelJobRow {
+    pub id: String,
+    pub created_at: String,
+    /// `model` (image to 3D model), `rig` (add a skeleton) or `animate` (apply animations to a rigged model).
+    pub kind: String,
+    /// The job this one builds on: a rig job's model job, or an animate job's rig job.
+    pub parent_id: Option<String>,
+    pub status: Status,
+    /// Stored path of what the job was started from: the image for a model, the model file for rig and animate.
+    pub source: String,
+    pub inputs: Vec<ModelInput>,
+    /// `tripo::ModelOptions` as JSON.
+    pub options: String,
+    pub task_id: Option<String>,
+    /// Stored path of the job's folder.
+    pub folder: String,
+    pub model_path: Option<String>,
+    pub preview_path: Option<String>,
+    pub credits: Option<f64>,
+    pub cost_usd: f64,
+    pub estimated_cost_usd: f64,
+    pub duration_s: f64,
+    pub error: Option<String>,
+}
+
+/// One audio generation: a prompt sent to ElevenLabs, the app's audio server or ComfyUI, with its clips.
+#[derive(Debug, Clone)]
+pub struct AudioJobRow {
+    pub id: String,
+    pub created_at: String,
+    pub status: Status,
+    /// `elevenlabs`, `audioServer` or `comfyui`.
+    pub provider: String,
+    /// Where it ran: "ElevenLabs" or the server's name.
+    pub source_name: String,
+    /// Model id, or the ComfyUI workflow's name.
+    pub model: String,
+    /// `sfx` or `music`.
+    pub kind: String,
+    pub prompt: String,
+    /// The request's settings as JSON (length, variations, loop, seed…).
+    pub params: String,
+    /// Stored paths of the saved clips.
+    pub clips: Vec<String>,
+    /// ElevenLabs credits used, when known.
+    pub credits: Option<f64>,
+    pub cost_usd: f64,
+    pub duration_s: f64,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Status {
     Ok,
     Error,
+    /// A 3D model job that Tripo is still working on.
+    Running,
 }
 
 /// Where `cost_usd` came from: the API's reported cost, the estimate (if the API didn't report one), or nothing
@@ -52,10 +114,15 @@ impl Status {
         match self {
             Status::Ok => "ok",
             Status::Error => "error",
+            Status::Running => "running",
         }
     }
     fn parse(s: &str) -> Self {
-        if s == "ok" { Status::Ok } else { Status::Error }
+        match s {
+            "ok" => Status::Ok,
+            "running" => Status::Running,
+            _ => Status::Error,
+        }
     }
 }
 
@@ -83,6 +150,11 @@ pub struct Totals {
     pub succeeded: u64,
     pub failed: u64,
     pub images: u64,
+    /// 3D models made (successful jobs).
+    pub models: u64,
+    /// Audio clips made.
+    pub audio_clips: u64,
+    /// Images and 3D models together.
     pub cost_usd: f64,
 }
 
@@ -136,6 +208,55 @@ impl Database {
                     usage              TEXT             -- the API's usage object, as JSON
                 );
                 CREATE INDEX generations_created_at ON generations (created_at);",
+            )?;
+        }
+        if version < 2 {
+            self.conn.execute_batch(
+                "CREATE TABLE model_jobs (
+                    id                 TEXT PRIMARY KEY,
+                    created_at         TEXT NOT NULL,   -- local time, ISO 8601
+                    status             TEXT NOT NULL,   -- running | ok | error
+                    source             TEXT NOT NULL,   -- the image the user picked
+                    inputs             TEXT NOT NULL,   -- JSON array of {view, path} sent to Tripo
+                    options            TEXT NOT NULL,   -- JSON ModelOptions
+                    task_id            TEXT,
+                    folder             TEXT NOT NULL,
+                    model_path         TEXT,
+                    preview_path       TEXT,
+                    credits            REAL,
+                    cost_usd           REAL NOT NULL,
+                    estimated_cost_usd REAL NOT NULL,
+                    duration_s         REAL NOT NULL,
+                    error              TEXT
+                );
+                CREATE INDEX model_jobs_created_at ON model_jobs (created_at);",
+            )?;
+        }
+        if version < 3 {
+            self.conn.execute_batch(
+                "ALTER TABLE model_jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'model';  -- model | rig | animate
+                 ALTER TABLE model_jobs ADD COLUMN parent_id TEXT;",
+            )?;
+        }
+        if version < 4 {
+            self.conn.execute_batch(
+                "CREATE TABLE audio_jobs (
+                    id          TEXT PRIMARY KEY,
+                    created_at  TEXT NOT NULL,   -- local time, ISO 8601
+                    status      TEXT NOT NULL,   -- ok | error
+                    provider    TEXT NOT NULL,   -- elevenlabs | audioServer | comfyui
+                    source_name TEXT NOT NULL,
+                    model       TEXT NOT NULL,
+                    kind        TEXT NOT NULL,   -- sfx | music
+                    prompt      TEXT NOT NULL,
+                    params      TEXT NOT NULL,   -- JSON
+                    clips       TEXT NOT NULL,   -- JSON array of paths
+                    credits     REAL,
+                    cost_usd    REAL NOT NULL,
+                    duration_s  REAL NOT NULL,
+                    error       TEXT
+                );
+                CREATE INDEX audio_jobs_created_at ON audio_jobs (created_at);",
             )?;
         }
         if version < SCHEMA_VERSION {
@@ -219,27 +340,170 @@ impl Database {
                 "SELECT COUNT(*),
                         COALESCE(SUM(status = 'ok'), 0),
                         COALESCE(SUM(json_array_length(images)), 0),
-                        COALESCE(SUM(cost_usd), 0)
+                        COALESCE(SUM(cost_usd), 0),
+                        (SELECT COUNT(*) FROM model_jobs WHERE status = 'ok' AND kind = 'model'),
+                        (SELECT COALESCE(SUM(cost_usd), 0) FROM model_jobs),
+                        (SELECT COALESCE(SUM(json_array_length(clips)), 0) FROM audio_jobs),
+                        (SELECT COALESCE(SUM(cost_usd), 0) FROM audio_jobs)
                  FROM generations",
                 [],
                 |r| {
                     let generations: u64 = r.get(0)?;
                     let succeeded: u64 = r.get(1)?;
+                    let image_cost: f64 = r.get(3)?;
+                    let model_cost: f64 = r.get(5)?;
+                    let audio_cost: f64 = r.get(7)?;
                     Ok(Totals {
                         generations,
                         succeeded,
                         failed: generations - succeeded,
                         images: r.get(2)?,
-                        cost_usd: r.get(3)?,
+                        models: r.get(4)?,
+                        audio_clips: r.get(6)?,
+                        cost_usd: image_cost + model_cost + audio_cost,
                     })
                 },
             )
             .map_err(|e| e.to_string())
     }
 
+    pub fn save_model_job(&self, j: &ModelJobRow) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO model_jobs (id, created_at, status, source, inputs, options, task_id, folder,
+                    model_path, preview_path, credits, cost_usd, estimated_cost_usd, duration_s, error, kind, parent_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                params![
+                    j.id,
+                    j.created_at,
+                    j.status.as_str(),
+                    j.source,
+                    serde_json::to_string(&j.inputs).unwrap(),
+                    j.options,
+                    j.task_id,
+                    j.folder,
+                    j.model_path,
+                    j.preview_path,
+                    j.credits,
+                    j.cost_usd,
+                    j.estimated_cost_usd,
+                    j.duration_s,
+                    j.error,
+                    j.kind,
+                    j.parent_id,
+                ],
+            )
+            .map(|_| ())
+            .map_err(|e| format!("Couldn't save the 3D model job to the history: {e}"))
+    }
+
+    /// All 3D model jobs, newest first.
+    pub fn model_jobs(&self) -> Result<Vec<ModelJobRow>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, created_at, status, source, inputs, options, task_id, folder, model_path, preview_path,
+                        credits, cost_usd, estimated_cost_usd, duration_s, error, kind, parent_id
+                 FROM model_jobs ORDER BY created_at DESC, rowid DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                let inputs: String = r.get(4)?;
+                Ok(ModelJobRow {
+                    id: r.get(0)?,
+                    created_at: r.get(1)?,
+                    status: Status::parse(&r.get::<_, String>(2)?),
+                    source: r.get(3)?,
+                    inputs: serde_json::from_str(&inputs).unwrap_or_default(),
+                    options: r.get(5)?,
+                    task_id: r.get(6)?,
+                    folder: r.get(7)?,
+                    model_path: r.get(8)?,
+                    preview_path: r.get(9)?,
+                    credits: r.get(10)?,
+                    cost_usd: r.get(11)?,
+                    estimated_cost_usd: r.get(12)?,
+                    duration_s: r.get(13)?,
+                    error: r.get(14)?,
+                    kind: r.get(15)?,
+                    parent_id: r.get(16)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn save_audio_job(&self, j: &AudioJobRow) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO audio_jobs (id, created_at, status, provider, source_name, model, kind, prompt,
+                    params, clips, credits, cost_usd, duration_s, error)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                params![
+                    j.id,
+                    j.created_at,
+                    j.status.as_str(),
+                    j.provider,
+                    j.source_name,
+                    j.model,
+                    j.kind,
+                    j.prompt,
+                    j.params,
+                    serde_json::to_string(&j.clips).unwrap(),
+                    j.credits,
+                    j.cost_usd,
+                    j.duration_s,
+                    j.error,
+                ],
+            )
+            .map(|_| ())
+            .map_err(|e| format!("Couldn't save the audio to the history: {e}"))
+    }
+
+    /// All audio generations, newest first.
+    pub fn audio_jobs(&self) -> Result<Vec<AudioJobRow>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, created_at, status, provider, source_name, model, kind, prompt, params, clips, credits,
+                        cost_usd, duration_s, error
+                 FROM audio_jobs ORDER BY created_at DESC, rowid DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                let clips: String = r.get(9)?;
+                Ok(AudioJobRow {
+                    id: r.get(0)?,
+                    created_at: r.get(1)?,
+                    status: Status::parse(&r.get::<_, String>(2)?),
+                    provider: r.get(3)?,
+                    source_name: r.get(4)?,
+                    model: r.get(5)?,
+                    kind: r.get(6)?,
+                    prompt: r.get(7)?,
+                    params: r.get(8)?,
+                    clips: serde_json::from_str(&clips).unwrap_or_default(),
+                    credits: r.get(10)?,
+                    cost_usd: r.get(11)?,
+                    duration_s: r.get(12)?,
+                    error: r.get(13)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Whether a generation, 3D model job or audio job already has this id.
     pub fn exists(&self, id: &str) -> bool {
         self.conn
-            .query_row("SELECT 1 FROM generations WHERE id = ?1", [id], |_| Ok(()))
+            .query_row(
+                "SELECT 1 FROM generations WHERE id = ?1 UNION ALL SELECT 1 FROM model_jobs WHERE id = ?1
+                 UNION ALL SELECT 1 FROM audio_jobs WHERE id = ?1",
+                [id],
+                |_| Ok(()),
+            )
             .optional()
             .ok()
             .flatten()
@@ -297,6 +561,102 @@ mod tests {
         assert_eq!(all[0].error.as_deref(), Some("boom"));
         assert_eq!(all[2].reference_images, ["images/a/ref_1.png"]);
         assert!(db.exists("bb") && !db.exists("zz"));
+    }
+
+    #[test]
+    fn model_jobs_count_toward_totals() {
+        let db = Database::open_in_memory();
+        db.insert(&sample("a", Status::Ok, 0.04, 1)).unwrap();
+        let mut job = ModelJobRow {
+            id: "m".into(),
+            created_at: "2026-11-15T10:00:00".into(),
+            kind: "model".into(),
+            parent_id: None,
+            status: Status::Running,
+            source: "images/a/image_1.jpg".into(),
+            inputs: vec![ModelInput {
+                view: "front".into(),
+                path: "models/m/view_front.png".into(),
+            }],
+            options: "{}".into(),
+            task_id: Some("t1".into()),
+            folder: "models/m".into(),
+            model_path: None,
+            preview_path: None,
+            credits: None,
+            cost_usd: 0.0,
+            estimated_cost_usd: 0.3,
+            duration_s: 0.0,
+            error: None,
+        };
+        db.save_model_job(&job).unwrap();
+        assert!(db.exists("m"));
+        assert_eq!(db.totals().unwrap().models, 0);
+
+        job.status = Status::Ok;
+        job.credits = Some(30.0);
+        job.cost_usd = 0.3;
+        job.model_path = Some("models/m/model.glb".into());
+        db.save_model_job(&job).unwrap();
+        let t = db.totals().unwrap();
+        assert_eq!((t.generations, t.models), (1, 1));
+        assert!((t.cost_usd - 0.34).abs() < 1e-9);
+        let jobs = db.model_jobs().unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].status, Status::Ok);
+        assert_eq!(jobs[0].inputs[0].view, "front");
+
+        // Rigging adds to the cost but isn't another model.
+        let rig = ModelJobRow {
+            id: "r".into(),
+            kind: "rig".into(),
+            parent_id: Some("m".into()),
+            cost_usd: 0.25,
+            ..job.clone()
+        };
+        db.save_model_job(&rig).unwrap();
+        let t = db.totals().unwrap();
+        assert_eq!(t.models, 1);
+        assert!((t.cost_usd - 0.59).abs() < 1e-9);
+        let rig = db
+            .model_jobs()
+            .unwrap()
+            .into_iter()
+            .find(|j| j.id == "r")
+            .unwrap();
+        assert_eq!(
+            (rig.kind.as_str(), rig.parent_id.as_deref()),
+            ("rig", Some("m"))
+        );
+    }
+
+    #[test]
+    fn audio_jobs_count_toward_totals() {
+        let db = Database::open_in_memory();
+        let job = AudioJobRow {
+            id: "a1".into(),
+            created_at: "2026-11-15T13:00:00".into(),
+            status: Status::Ok,
+            provider: "elevenlabs".into(),
+            source_name: "ElevenLabs".into(),
+            model: "eleven_text_to_sound_v2".into(),
+            kind: "sfx".into(),
+            prompt: "sword clash".into(),
+            params: "{}".into(),
+            clips: vec!["audio/a1/clip_1.wav".into(), "audio/a1/clip_2.wav".into()],
+            credits: Some(400.0),
+            cost_usd: 0.088,
+            duration_s: 3.0,
+            error: None,
+        };
+        db.save_audio_job(&job).unwrap();
+        assert!(db.exists("a1"));
+        let t = db.totals().unwrap();
+        assert_eq!(t.audio_clips, 2);
+        assert!((t.cost_usd - 0.088).abs() < 1e-9);
+        let jobs = db.audio_jobs().unwrap();
+        assert_eq!(jobs[0].clips.len(), 2);
+        assert_eq!(jobs[0].credits, Some(400.0));
     }
 
     #[test]

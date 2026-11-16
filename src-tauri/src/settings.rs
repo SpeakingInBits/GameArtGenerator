@@ -1,4 +1,5 @@
-//! User settings, kept in `settings.json` in the data folder. The API key is not stored here (see `secrets.rs`).
+//! User settings, kept in `settings.json` in the data folder. API keys and server tokens are not stored here (see
+//! `secrets.rs`).
 
 use std::path::Path;
 
@@ -16,6 +17,25 @@ pub struct Settings {
     pub prompt: String,
     /// Where new images are saved. `None` means the `images` folder in the data folder.
     pub images_dir: Option<String>,
+    /// Where new audio is saved. `None` means the `audio` folder in the data folder.
+    pub audio_dir: Option<String>,
+    /// Self-hosted audio servers: the app's own audio server and ComfyUI, on this PC, another PC or a cloud GPU.
+    pub audio_servers: Vec<AudioServer>,
+    /// What 1,000 ElevenLabs credits cost on your plan, for the cost bar.
+    pub elevenlabs_usd_per_1k_credits: f64,
+    /// Last-used Audio tab choices.
+    pub audio: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioServer {
+    pub id: String,
+    pub name: String,
+    /// `audioServer` (this repo's `audio-server`) or `comfyui`.
+    pub kind: String,
+    /// Base URL, e.g. `http://127.0.0.1:8188`.
+    pub url: String,
 }
 
 impl Default for Settings {
@@ -28,6 +48,11 @@ impl Default for Settings {
             quality: "auto".into(),
             prompt: String::new(),
             images_dir: None,
+            audio_dir: None,
+            audio_servers: vec![],
+            // ElevenLabs Creator plan: $22 for 100,000 credits.
+            elevenlabs_usd_per_1k_credits: 0.22,
+            audio: serde_json::Value::Null,
         }
     }
 }
