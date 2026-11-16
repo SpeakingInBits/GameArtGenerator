@@ -1,0 +1,12 @@
+[project]
+name = "game-art-audio-server"
+version = "1.0.0"
+description = "Runs open audio models (Stable Audio 3) for the Game Art Generator app"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+
+[tool.uv]
+package = false

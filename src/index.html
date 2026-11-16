@@ -14,6 +14,7 @@
     </div>
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="generate" role="tab">Generate</button>
+      <button class="tab" data-tab="audio" role="tab">Audio</button>
       <button class="tab" data-tab="history" role="tab">History</button>
     </nav>
     <div class="costs" aria-label="Spending">
@@ -43,7 +44,10 @@
         <div class="field">
           <div class="field-head">
             <label for="prompt">Prompt</label>
-            <span id="prompt-count" class="muted small"></span>
+            <span class="field-tools">
+              <span id="prompt-count" class="muted small"></span>
+              <button id="sheet-open" class="button small" title="Build a prompt for a turnaround sheet (front, side, back…) that image-to-3D tools can use">Reference sheet…</button>
+            </span>
           </div>
           <textarea id="prompt" placeholder="Describe the art you want, e.g. &quot;Pixel-art treasure chest, 32×32 game sprite, flat background&quot;"></textarea>
         </div>
@@ -108,6 +112,76 @@
       </section>
     </section>
 
+    <!-- Audio -->
+    <section id="tab-audio" class="tab-panel">
+      <aside class="controls">
+        <div class="field">
+          <div class="field-head">
+            <label for="audio-source">Generate with</label>
+            <button id="audio-servers-open" class="button small" title="Add or change self-hosted servers and ComfyUI workflows">Servers…</button>
+          </div>
+          <select id="audio-source"></select>
+          <p id="audio-source-info" class="muted small hint-text"></p>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <label for="audio-prompt">Prompt</label>
+            <label class="check small"><input id="audio-batch" type="checkbox"> Batch: one sound per line</label>
+          </div>
+          <textarea id="audio-prompt" placeholder="Describe the sound, e.g. &quot;heavy sword hitting a wooden shield, close, dry&quot;"></textarea>
+        </div>
+
+        <div class="field settings-grid">
+          <label for="audio-seconds">Length</label>
+          <div class="inline">
+            <input id="audio-seconds" type="number" min="0.5" max="600" step="0.5" value="3">
+            <span class="muted small">seconds</span>
+            <label class="check small" id="audio-auto-wrap"><input id="audio-auto" type="checkbox"> Auto</label>
+          </div>
+          <label for="audio-variations">Variations</label>
+          <input id="audio-variations" type="number" min="1" max="4" value="2">
+          <label for="audio-model" id="audio-model-label">Model</label>
+          <select id="audio-model"></select>
+          <label for="audio-influence" id="audio-influence-label">Follow prompt</label>
+          <div class="inline" id="audio-influence-wrap">
+            <input id="audio-influence" type="range" min="0" max="1" step="0.05" value="0.3">
+            <span id="audio-influence-value" class="muted small">0.30</span>
+          </div>
+          <label for="audio-negative" id="audio-negative-label">Avoid</label>
+          <input id="audio-negative" type="text" placeholder="e.g. music, voices, reverb">
+          <label for="audio-seed" id="audio-seed-label">Seed</label>
+          <input id="audio-seed" type="number" min="0" placeholder="random">
+        </div>
+        <div class="field audio-checks">
+          <label class="check" id="audio-loop-wrap"><input id="audio-loop" type="checkbox"> Loop seamlessly (ambience, engines, fire)</label>
+          <label class="check" id="audio-instrumental-wrap"><input id="audio-instrumental" type="checkbox" checked> Instrumental (no vocals)</label>
+          <label class="check"><input id="audio-clean" type="checkbox" checked> Clean up: trim silence, even out volume, save as WAV</label>
+        </div>
+
+        <div class="generate-box">
+          <div class="estimate">
+            <span id="audio-usage" class="muted small"></span>
+          </div>
+          <button id="audio-generate" class="button primary big">Generate <span class="kbd-hint">Ctrl+Enter</span></button>
+        </div>
+      </aside>
+
+      <section class="results">
+        <div class="results-head">
+          <h2>Sounds</h2>
+          <input id="audio-search" type="search" placeholder="Search prompts" class="audio-search">
+          <span id="audio-summary" class="muted small"></span>
+        </div>
+        <div id="audio-list" class="audio-list">
+          <div id="audio-empty" class="empty-state">
+            <p>Your sound effects and music will show up here.</p>
+            <p class="muted small">ElevenLabs works with an API key. For models on your own GPU, a Lambda server or this PC, add a server with <strong>Servers…</strong></p>
+          </div>
+        </div>
+      </section>
+    </section>
+
     <!-- History -->
     <section id="tab-history" class="tab-panel">
       <div class="history-list">
@@ -148,6 +222,63 @@
       </section>
 
       <section>
+        <h3>Tripo API key <span class="muted small">(for 3D models)</span></h3>
+        <p id="tripo-key-status" class="muted small"></p>
+        <div class="inline">
+          <input id="tripo-key-input" type="password" placeholder="tsk_…" autocomplete="off" spellcheck="false">
+          <button id="tripo-key-save" type="button" class="button primary">Save</button>
+          <button id="tripo-key-remove" type="button" class="button">Remove</button>
+        </div>
+        <p class="muted small">Saved in Windows Credential Manager. Get a key and buy credits at <a href="#" data-open="https://platform.tripo3d.ai">platform.tripo3d.ai</a>.</p>
+      </section>
+
+      <section>
+        <h3>ElevenLabs API key <span class="muted small">(for sound effects and music)</span></h3>
+        <p id="eleven-key-status" class="muted small"></p>
+        <div class="inline">
+          <input id="eleven-key-input" type="password" placeholder="sk_…" autocomplete="off" spellcheck="false">
+          <button id="eleven-key-save" type="button" class="button primary">Save</button>
+          <button id="eleven-key-remove" type="button" class="button">Remove</button>
+        </div>
+        <div class="inline">
+          <span class="muted small">Your plan's price per 1,000 credits, for the cost bar: $</span>
+          <input id="eleven-rate" type="number" min="0" step="0.01" class="rate-input">
+        </div>
+        <p class="muted small">Saved in Windows Credential Manager. Get a key at <a href="#" data-open="https://elevenlabs.io/app/settings/api-keys">elevenlabs.io</a>. Commercial use needs a paid plan.</p>
+      </section>
+
+      <section>
+        <h3>Audio servers <span class="muted small">(self-hosted: this PC, another PC, Lambda…)</span></h3>
+        <div id="server-list" class="server-list"></div>
+        <div class="server-form">
+          <input id="server-name" type="text" placeholder="Name, e.g. GPU PC or Lambda">
+          <select id="server-kind">
+            <option value="comfyui">ComfyUI</option>
+            <option value="audioServer">Game Art audio server</option>
+          </select>
+          <input id="server-url" type="text" placeholder="http://127.0.0.1:8188">
+          <input id="server-token" type="password" placeholder="Token (optional)" autocomplete="off">
+          <button id="server-save" type="button" class="button primary">Add</button>
+          <button id="server-cancel" type="button" class="button" hidden>Cancel</button>
+        </div>
+        <p class="muted small">ComfyUI listens on port 8188, the app's audio server on 8190. For a Lambda or other cloud server, connect through an SSH tunnel and use a <code>127.0.0.1</code> address. See <code>docs/self-hosting.md</code>.</p>
+        <h3 class="sub-head">ComfyUI workflows</h3>
+        <div id="workflow-list" class="server-list"></div>
+        <button id="workflow-import" type="button" class="button">Import workflow…</button>
+        <p class="muted small">In ComfyUI, open an audio workflow (Stable Audio, ACE-Step, MiniMax Music…) and use Workflow → Export (API). Each workflow can run on any of your ComfyUI servers.</p>
+      </section>
+
+      <section>
+        <h3>Audio folder</h3>
+        <p class="muted small">Where new sounds are saved. Point it at your game project's audio folder if you like.</p>
+        <div class="inline">
+          <input id="audio-dir" type="text" readonly>
+          <button id="audio-dir-change" type="button" class="button">Change…</button>
+          <button id="audio-dir-reset" type="button" class="button">Reset</button>
+        </div>
+      </section>
+
+      <section>
         <h3>Images folder</h3>
         <p class="muted small">Where new images are saved. Point it at your game project's art folder if you like.</p>
         <div class="inline">
@@ -181,6 +312,219 @@
     </form>
   </dialog>
 
+  <!-- Reference sheet preset -->
+  <dialog id="sheet-dialog">
+    <form method="dialog" class="dialog-body">
+      <div>
+        <h2>Reference sheet</h2>
+        <p class="muted small">Builds a prompt for one image showing the same subject from several angles, with flat lighting and a plain background. That's the input image-to-3D tools (Tripo, Meshy and similar) work best with, and it keeps a design consistent across later images.</p>
+      </div>
+
+      <div class="sheet-grid">
+        <label for="sheet-kind">Subject</label>
+        <select id="sheet-kind">
+          <option value="character">Character</option>
+          <option value="creature">Creature</option>
+          <option value="item">Item or prop</option>
+        </select>
+
+        <label for="sheet-subject">Description</label>
+        <textarea id="sheet-subject" rows="3" placeholder="e.g. a dwarf blacksmith with a braided red beard, leather apron and soot-stained arms"></textarea>
+
+        <span></span>
+        <label class="check"><input id="sheet-use-refs" type="checkbox" checked> <span id="sheet-use-refs-text">Base the design on the reference images</span></label>
+
+        <label for="sheet-style">Art style</label>
+        <input id="sheet-style" type="text" placeholder="e.g. stylized hand-painted fantasy, like a 3D game concept">
+
+        <label>Views</label>
+        <div id="sheet-views" class="check-row">
+          <label class="check"><input type="checkbox" value="front"> Front</label>
+          <label class="check"><input type="checkbox" value="threeQuarter"> Three-quarter</label>
+          <label class="check"><input type="checkbox" value="side"> Side</label>
+          <label class="check"><input type="checkbox" value="back"> Back</label>
+          <label class="check"><input type="checkbox" value="top"> Top</label>
+        </div>
+
+        <label for="sheet-pose">Pose</label>
+        <select id="sheet-pose">
+          <option value="a">A-pose (arms angled down, best for rigging)</option>
+          <option value="t">T-pose (arms straight out)</option>
+          <option value="relaxed">Relaxed standing</option>
+        </select>
+
+        <label for="sheet-background">Background</label>
+        <select id="sheet-background">
+          <option value="light gray">Plain light gray</option>
+          <option value="white">Plain white</option>
+          <option value="mid gray">Plain mid gray</option>
+        </select>
+
+        <span></span>
+        <label class="check"><input id="sheet-for-3d" type="checkbox" checked> Clean for 3D: orthographic views, even lighting, no shadows</label>
+
+        <span></span>
+        <label class="check"><input id="sheet-set-aspect" type="checkbox" checked> <span id="sheet-aspect-text">Set aspect ratio</span></label>
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <label for="sheet-preview">Prompt</label>
+          <span class="muted small">You can still edit it after.</span>
+        </div>
+        <textarea id="sheet-preview" rows="8" readonly></textarea>
+      </div>
+
+      <div class="dialog-actions">
+        <button class="button" value="cancel">Cancel</button>
+        <button id="sheet-apply" class="button primary" value="apply">Use this prompt</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Make 3D model (Tripo) -->
+  <dialog id="model-dialog">
+    <form method="dialog" class="dialog-body">
+      <div>
+        <h2>Make 3D model</h2>
+        <p class="muted small">Sends the image to Tripo, which builds a textured 3D model (.glb) you can rig in Mixamo or import into Godot, Unity or Blender. It usually takes a minute or two.</p>
+      </div>
+
+      <div class="model-source">
+        <img id="model-source-img" alt="">
+        <div class="model-mode">
+          <label class="check"><input type="radio" name="model-mode" value="views"> Separate views (reference sheet)</label>
+          <label class="check"><input type="radio" name="model-mode" value="image"> The whole image as one picture</label>
+          <p id="model-mode-hint" class="muted small"></p>
+        </div>
+      </div>
+
+      <div id="model-views-box">
+        <div id="model-views" class="model-views"></div>
+        <p class="muted small hint-line">Tripo needs the front view and at least one more. Three-quarter and top views don't fit its slots, so leave them out. If the model comes out mirrored, swap Left and Right.</p>
+      </div>
+
+      <div class="sheet-grid">
+        <label for="model-texture">Texture</label>
+        <select id="model-texture">
+          <option value="standard">Standard</option>
+          <option value="detailed">Detailed (HD)</option>
+          <option value="none">None (shape only)</option>
+        </select>
+        <span></span>
+        <label class="check"><input id="model-pbr" type="checkbox" checked> PBR materials (metalness, roughness and normal maps)</label>
+        <span></span>
+        <label class="check"><input id="model-lowpoly" type="checkbox"> Low-poly mesh for games (cleaner topology, fewer faces)</label>
+      </div>
+
+      <div class="estimate">
+        <span class="muted">Estimated cost</span>
+        <strong id="model-estimate">—</strong>
+        <span id="model-balance" class="muted small"></span>
+      </div>
+      <p id="model-problem" class="model-problem small" hidden></p>
+
+      <div class="dialog-actions">
+        <button class="button" value="cancel">Cancel</button>
+        <button id="model-start" class="button primary" value="start">Make 3D model</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Import a ComfyUI workflow -->
+  <dialog id="workflow-dialog">
+    <form method="dialog" class="dialog-body">
+      <div>
+        <h2>Import ComfyUI workflow</h2>
+        <p class="muted small">Check which inputs the app fills in. It guessed from the workflow; change any that are wrong.</p>
+      </div>
+      <div class="sheet-grid">
+        <label for="wf-name">Name</label>
+        <input id="wf-name" type="text">
+        <label for="wf-kind">Makes</label>
+        <select id="wf-kind">
+          <option value="sfx">Sound effects</option>
+          <option value="music">Music</option>
+        </select>
+        <label for="wf-max">Longest</label>
+        <div class="inline"><input id="wf-max" type="number" min="1" max="1200" value="47"><span class="muted small">seconds (what the model can make)</span></div>
+        <label for="wf-prompt">Prompt</label>
+        <select id="wf-prompt" data-role="prompt"></select>
+        <label for="wf-negative">Avoid</label>
+        <select id="wf-negative" data-role="negative"></select>
+        <label for="wf-seconds">Length</label>
+        <select id="wf-seconds" data-role="seconds"></select>
+        <label for="wf-seed">Seed</label>
+        <select id="wf-seed" data-role="seed"></select>
+      </div>
+      <p id="wf-problem" class="model-problem small" hidden></p>
+      <div class="dialog-actions">
+        <button class="button" value="cancel">Cancel</button>
+        <button id="wf-save" class="button primary" value="save">Import</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Rig & animate (Tripo) -->
+  <dialog id="rig-dialog">
+    <form method="dialog" class="dialog-body">
+      <div>
+        <h2>Rig &amp; animate</h2>
+        <p class="muted small">Tripo adds a skeleton so the model can move, for humanoids and other body types (four legs, wings, snakes…). It can then apply preset animations. The files are saved next to the model.</p>
+      </div>
+
+      <p id="rig-check" class="rig-check small"></p>
+
+      <div class="sheet-grid">
+        <label for="rig-type">Body type</label>
+        <select id="rig-type">
+          <option value="biped">Humanoid (two legs)</option>
+          <option value="quadruped">Four legs</option>
+          <option value="hexapod">Six legs (insects)</option>
+          <option value="octopod">Eight legs (spiders)</option>
+          <option value="avian">Bird or winged</option>
+          <option value="serpentine">Snake-like</option>
+          <option value="aquatic">Fish or sea creature</option>
+          <option value="others">Something else</option>
+        </select>
+
+        <label for="rig-spec">Skeleton</label>
+        <select id="rig-spec">
+          <option value="mixamo">Mixamo bone names (works with Mixamo animations)</option>
+          <option value="tripo">Tripo</option>
+          <option value="unity">Unity humanoid</option>
+          <option value="unreal">Unreal mannequin</option>
+          <option value="actorcore">ActorCore</option>
+          <option value="vrm">VRM (avatars)</option>
+        </select>
+
+        <label for="rig-format">File format</label>
+        <select id="rig-format">
+          <option value="glb">GLB (Godot, Blender, web)</option>
+          <option value="fbx">FBX (Unity, Unreal, Mixamo)</option>
+        </select>
+
+        <label>Animations</label>
+        <div id="rig-animations" class="check-row"></div>
+
+        <span></span>
+        <label class="check"><input id="rig-in-place" type="checkbox" checked> Animate in place (your game moves the character)</label>
+      </div>
+
+      <div class="estimate">
+        <span class="muted">Estimated cost</span>
+        <strong id="rig-estimate">—</strong>
+        <span id="rig-estimate-detail" class="muted small"></span>
+      </div>
+      <p id="rig-problem" class="model-problem small" hidden></p>
+
+      <div class="dialog-actions">
+        <button class="button" value="cancel">Cancel</button>
+        <button id="rig-start" class="button primary" value="start">Rig model</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Preview -->
   <div id="lightbox" class="lightbox" hidden>
     <button class="lightbox-close icon-button" aria-label="Close">✕</button>
@@ -193,6 +537,8 @@
       <button class="button small" data-action="folder">Show in folder</button>
       <button class="button small" data-action="copy">Copy</button>
       <button class="button small" data-action="reference">Use as reference</button>
+      <button class="button small" data-action="model">Make 3D model…</button>
+      <button class="button small" data-action="openModel">Open 3D model</button>
     </div>
   </div>
 
@@ -202,6 +548,9 @@
     <button data-action="copy">Copy image</button>
     <hr>
     <button data-action="reference">Use as reference image</button>
+    <button data-action="model">Make 3D model…</button>
+    <button data-action="openModel">Open 3D model</button>
+    <button data-action="rig">Rig &amp; animate…</button>
   </div>
 
   <div id="drop-overlay" class="drop-overlay" hidden><div>Drop to add as reference images</div></div>
